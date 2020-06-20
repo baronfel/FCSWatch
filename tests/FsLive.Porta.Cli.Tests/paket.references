@@ -1,0 +1,7 @@
+FSharp.Core
+FsUnit
+Microsoft.NET.Test.Sdk
+NUnit3TestAdapter
+Microsoft.CSharp
+System.Reflection.Emit.ILGeneration
+System.Reflection.Emit.Lightweight

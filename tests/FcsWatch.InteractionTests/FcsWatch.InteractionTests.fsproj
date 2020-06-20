@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\fcswatch-cli\fcswatch-cli.fsproj" />
@@ -12,9 +12,6 @@
     <Compile Include="Types.fs" />
     <Compile Include="InteractionTests.fs" />
     <Compile Include="Program.fs" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="FSharp.Compiler.Service" Version="27.0.1" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 

@@ -1,9 +1,20 @@
 source https://api.nuget.org/v3/index.json
 storage: none
+
+framework: netstandard2.0, netcoreapp3.1
+
+nuget Argu
 nuget FSharp.Compiler.Service
 nuget Expecto
 nuget Dotnet.ProjInfo
-nuget Fake.DotNet.Cli ~> 5.13.2
+nuget Fake.DotNet.Cli
 nuget Suave
 nuget Dotnet.ProjInfo.Workspace
+nuget Dotnet.ProjInfo.Workspace.FCS
+
+nuget FsUnit
+nuget Microsoft.NET.Test.Sdk
+nuget NUnit3TestAdapter
+nuget Microsoft.CSharp
+
 github aspnet/AspNetCore:316fbbe9c42477b6c1d2088b5ef72f8ee3462186 src/Shared/Process/ProcessExtensions.cs

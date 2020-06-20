@@ -12,6 +12,7 @@ open System.Threading.Tasks
 open FSharp.Compiler.SourceCodeServices
 open Fake.IO.Globbing.Operators
 open FcsWatch.Core.ProjectCoreCracker
+open FSharp.Compiler.Text
 
 type IMailboxProcessor<'Msg> =
     abstract member PostAndReply: buildMsg: (AsyncReplyChannel<'Reply> -> 'Msg) -> 'Reply
@@ -52,7 +53,7 @@ module internal Extensions =
     [<RequireQualifiedAccess>]
     module internal MailboxProcessor =
         let toChildInterface (mapping: 'ChildMsg -> 'Msg) (agent: MailboxProcessor<'Msg>) =
-            { new IMailboxProcessor<'ChildMsg> with 
+            { new IMailboxProcessor<'ChildMsg> with
                 member x.PostAndReply buildMsg =
                     agent.PostAndReply (fun replyChannel -> mapping (buildMsg replyChannel))
 
@@ -85,25 +86,25 @@ module FileSystem =
         assert useEditFiles
         let infoDir = Path.Combine(Path.GetDirectoryName fileName,".fsharp")
         let editFile = Path.Combine(infoDir,Path.GetFileName fileName + ".edit")
-        if not (Directory.Exists infoDir) then 
+        if not (Directory.Exists infoDir) then
             Directory.CreateDirectory infoDir |> ignore
         infoDir, editFile
 
-    let readFile (fileName: string) (useEditFiles) = 
-        if useEditFiles then 
+    let readFile (fileName: string) (useEditFiles): ISourceText =
+        if useEditFiles then
             let infoDir, editFile = editDirAndFile fileName useEditFiles
             let preferEditFile =
-                try 
+                try
                     Directory.Exists infoDir && File.Exists editFile && File.Exists fileName && File.GetLastWriteTime(editFile) > File.GetLastWriteTime(fileName)
-                with _ -> 
+                with _ ->
                     false
-            if preferEditFile then 
+            if preferEditFile then
                 logger.Info "*** preferring %s to %s ***" editFile fileName
-                File.ReadAllText editFile
+                File.ReadAllText editFile |> SourceText.ofString
             else
-                File.ReadAllText fileName
+                File.ReadAllText fileName |> SourceText.ofString
         else
-            File.ReadAllText fileName
+            File.ReadAllText fileName |> SourceText.ofString
 
 
 type internal Logger.Logger with
@@ -125,21 +126,21 @@ module internal ICompilerOrCheckResult =
 
 
 type NoFrameworkCrackedFsprojBuilder =
-    { OtherFlags: string [] 
+    { OtherFlags: string []
       UseEditFiles: bool
       Checker: FSharpChecker
       Configuration: Configuration }
 
 type ScriptCrackedFsprojBuilder =
-    { OtherFlags: string [] 
-      File: string 
+    { OtherFlags: string []
+      File: string
       Checker: FSharpChecker
       Configuration: Configuration }
 
 
 
 type ProjectCrackedFsprojBuilder =
-    { OtherFlags: string [] 
+    { OtherFlags: string []
       File: string
       Configuration: Configuration }
 
@@ -161,7 +162,7 @@ module FullCrackedFsprojBuilder =
         | FullCrackedFsprojBuilder.FSharpArgs builder -> builder.Configuration
         | FullCrackedFsprojBuilder.Project builder-> builder.Configuration
 
-    let getConfigurationText builder = 
+    let getConfigurationText builder =
         let configuration = getConfiguration builder
         Configuration.name configuration
 
@@ -169,23 +170,23 @@ module FullCrackedFsprojBuilder =
     let create workingDir configuration useEditFiles checker (entryFileOp: string option) (otherFlags: string []) =
         let workingDir = Path.nomalizeToUnixCompatiable workingDir
 
-        let entryFileOp = 
-            match entryFileOp with 
+        let entryFileOp =
+            match entryFileOp with
             | Some file -> Some (Path.nomalizeToUnixCompatiable file)
             | None ->
                 !! (workingDir </> "*.fsproj")
                 |> List.ofSeq
-                |> function 
+                |> function
                     | [ ] ->  None
-                    | [ file ] -> 
+                    | [ file ] ->
                         logger.Important "using implicit project file '%s'" file
                         Some file
-                    | file1 :: file2 :: _ -> 
-                        failwithf "multiple project files found, e.g. %s and %s" file1 file2 
+                    | file1 :: file2 :: _ ->
+                        failwithf "multiple project files found, e.g. %s and %s" file1 file2
 
-        match entryFileOp with 
+        match entryFileOp with
         | Some file ->
-            match file with 
+            match file with
             | projectFile when projectFile.EndsWith ".fsproj" ->
                 { OtherFlags = otherFlags
                   File = projectFile
@@ -201,11 +202,11 @@ module FullCrackedFsprojBuilder =
 
             | _ -> failwithf "entry file %s should end with .fsproj;.fs;.fsx;.fsi;" file
         | None ->
-            match otherFlags with 
-            | [||] -> failwithf "no project file found, no compilation arguments given and no project file found in \"%s\"" workingDir 
+            match otherFlags with
+            | [||] -> failwithf "no project file found, no compilation arguments given and no project file found in \"%s\"" workingDir
             | _ ->
                 { OtherFlags = otherFlags
-                  UseEditFiles = useEditFiles 
+                  UseEditFiles = useEditFiles
                   Checker = checker
                   Configuration = configuration }
                 |> FullCrackedFsprojBuilder.FSharpArgs
@@ -332,7 +333,7 @@ module FullCrackedFsproj =
 
         let noframwork fsharpProjectOptions (file: string) =
 
-            let outputDll = 
+            let outputDll =
 
 
                 let fileName = Path.GetFileNameWithoutExtension file
@@ -345,8 +346,8 @@ module FullCrackedFsproj =
                   "TargetFramework", "noframework"]
                 |> Map.ofList
 
-            let project = 
-                { Value = 
+            let project =
+                { Value =
                     { FSharpProjectOptions = fsharpProjectOptions
                       ProjRefs = []
                       Props = props
@@ -385,19 +386,19 @@ module FullCrackedFsproj =
             return (project, projectMap)
 
         | FullCrackedFsprojBuilder.Script builder ->
-            let fsharpProjectOptions = 
+            let fsharpProjectOptions =
                 ProjectCoreCracker.getProjectOptionsFromScript builder.Checker builder.File
-                    
+
             let otherOptions = Array.append fsharpProjectOptions.OtherOptions builder.OtherFlags |> Array.distinct
 
             let fsharpProjectOptions =
-                { fsharpProjectOptions with 
+                { fsharpProjectOptions with
                     OtherOptions = otherOptions
                     SourceFiles = getSourceFilesFromOtherOptions otherOptions AdditionalProjInfoConfig.Empty "" }
 
             return noframwork fsharpProjectOptions builder.File
 
-        | FullCrackedFsprojBuilder.FSharpArgs builder -> 
+        | FullCrackedFsprojBuilder.FSharpArgs builder ->
             let otherFlags = builder.OtherFlags
             let useEditFiles = builder.UseEditFiles
             let checker = builder.Checker
@@ -405,23 +406,23 @@ module FullCrackedFsproj =
             let sourceFiles, otherFlags2 = otherFlags |> Array.partition (fun arg -> arg.EndsWith(".fs") || arg.EndsWith(".fsi") || arg.EndsWith(".fsx"))
             let sourceFiles = sourceFiles |> Array.map Path.nomalizeToUnixCompatiable
 
-            match sourceFiles with 
+            match sourceFiles with
             | [| script |] when script.EndsWith ".fsx" ->
-                let text = FileSystem.readFile script useEditFiles
-                let fsharpProjectOptions, errors = checker.GetProjectOptionsFromScript(script, text, otherFlags=otherFlags2) |> Async.RunSynchronously
-                if errors.Length > 0 then 
+                let sourceText = FileSystem.readFile script useEditFiles
+                let fsharpProjectOptions, errors = checker.GetProjectOptionsFromScript(script, sourceText, otherFlags=otherFlags2) |> Async.RunSynchronously
+                if errors.Length > 0 then
                     failwithf "%A" errors
 
                 return noframwork fsharpProjectOptions script
 
-            | _ -> 
+            | _ ->
                 let fsproj = Path.GetTempFileName() |> Path.changeExtension ".fsproj"
                 let fsharpProjectOptions = checker.GetProjectOptionsFromCommandLineArgs(fsproj, otherFlags2)
 
-                let fsharpProjectOptions = 
+                let fsharpProjectOptions =
                     { fsharpProjectOptions with SourceFiles = sourceFiles }
 
-                return noframwork fsharpProjectOptions fsproj 
+                return noframwork fsharpProjectOptions fsproj
     }
 
 
@@ -432,7 +433,7 @@ module private ProjectMap =
         let dict = new Dictionary<string, string list>()
         projectMap |> Seq.iter (fun pair ->
             pair.Value.SourceFiles |> Seq.iter (fun sourceFile ->
-                match dict.TryGetValue sourceFile with 
+                match dict.TryGetValue sourceFile with
                 | true, projPaths ->
                     dict.[sourceFile] <- pair.Key :: projPaths
                 | false, _ -> dict.Add(sourceFile,[pair.Key])
@@ -480,7 +481,7 @@ module CrackedFsprojBundleCache =
         let sourceFileMap = ProjectMap.sourceFileMap projectMap
 
         let editSourceFileMap =
-            if useEditFiles then 
+            if useEditFiles then
                 sourceFileMap |> Seq.map (fun pair ->
                     let sourceFile = pair.Key
                     let (_, file) = FileSystem.editDirAndFile sourceFile useEditFiles
@@ -510,7 +511,7 @@ module CrackedFsprojBundleCache =
             ) projectMap
 
         let objRefOnly (projectMap: Map<string, CrackedFsproj>) =
-            let values = 
+            let values =
                 projectMap
                 |> Seq.map (fun pair -> pair.Value)
                 |> CrackedFsproj.mapProjOtherOptionsObjRefOnly
@@ -554,8 +555,8 @@ let crackedFsprojBundle useEditFiles builder = MailboxProcessor<CrackedFsprojBun
             return! loop entry newCache
     }
 
-    let (project, cache) = 
-        try 
+    let (project, cache) =
+        try
             FullCrackedFsproj.create builder |> Async.RunSynchronously
         with ex ->
             logger.Error "ERRORS: %A" ex
@@ -571,16 +572,15 @@ type WhyCompile =
     | DetectFileChange
 
 type CompilerTask<'Result when 'Result :> ICompilerOrCheckResult> = CompilerTask of why:WhyCompile * startTime: DateTime * task: Task<'Result list>
-with 
-    member x.Why = 
-        match x with 
+with
+    member x.Why =
+        match x with
         | CompilerTask(why = m) -> m
 
-    member x.StartTime = 
-        match x with 
+    member x.StartTime =
+        match x with
         | CompilerTask(startTime = m) -> m
 
-    member x.Task = 
-        match x with 
+    member x.Task =
+        match x with
         | CompilerTask(task = m) -> m
-
